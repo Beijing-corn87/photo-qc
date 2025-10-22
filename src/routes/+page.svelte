@@ -1,13 +1,17 @@
 <script>
+  import { onMount } from 'svelte';
+
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const baseUrl = 'http://192.168.1.249:3000';
 
-  // Reactive store to track image loading errors
-  const imageErrors = {};
+  let currentDayIndex = 0;
+  let imageErrors = {};
   daysOfWeek.forEach(day => (imageErrors[day] = false));
 
+  let photoContainer;
+
   function handleImageError(day) {
-    imageErrors[day] = true;
+    imageErrors = { ...imageErrors, [day]: true };
   }
 
   async function handleClick(day, action) {
@@ -17,9 +21,12 @@
       if (response.ok) {
         console.log(`${day} ${action} successful!`);
         alert(`${day} ${action} successful!`);
-        // If regenerate, reset error state to try loading image again
         if (action === 'regenerate') {
-          imageErrors[day] = false;
+          // Force re-render of image by changing its src or key
+          // For simplicity, we'll just reset the error state and hope it reloads
+          imageErrors = { ...imageErrors, [day]: false };
+          // A more robust solution might involve appending a timestamp to the src
+          // or using a Svelte key directive to force component re-creation.
         }
       } else {
         console.error(`Failed to ${action} ${day}: ${response.statusText}`);
@@ -30,92 +37,203 @@
       alert(`Error ${action}ing ${day}: ${error.message}`);
     }
   }
+
+  function goToNextDay() {
+    currentDayIndex = (currentDayIndex + 1) % daysOfWeek.length;
+  }
+
+  function goToPrevDay() {
+    currentDayIndex = (currentDayIndex - 1 + daysOfWeek.length) % daysOfWeek.length;
+  }
+
+  // Scroll to the current day when currentDayIndex changes
+  $: if (photoContainer) {
+    const targetElement = photoContainer.children[currentDayIndex];
+    if (targetElement) {
+      targetElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'center'
+      });
+    }
+  }
+
+  // Keyboard navigation
+  onMount(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'ArrowRight') {
+        goToNextDay();
+      } else if (event.key === 'ArrowLeft') {
+        goToPrevDay();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  });
 </script>
 
 <style>
-  .container {
+  .main-layout {
     display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-    justify-content: center;
-    padding: 20px;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden; /* Hide main layout scrollbar */
   }
+
+  .photo-scroll-container {
+    flex-grow: 1;
+    display: flex;
+    overflow-x: scroll; /* Enable horizontal scrolling */
+    scroll-snap-type: x mandatory; /* Snap to full-screen images */
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+    scrollbar-width: none; /* Hide scrollbar for Firefox */
+  }
+
+  .photo-scroll-container::-webkit-scrollbar {
+    display: none; /* Hide scrollbar for Chrome, Safari, Opera */
+  }
+
   .photo-card {
-    border: 1px solid #ccc;
-    padding: 10px;
+    flex: 0 0 100vw; /* Each card takes full viewport width */
+    height: 100vh; /* Each card takes full viewport height */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    scroll-snap-align: center; /* Snap to center of card */
+    padding: 20px;
     text-align: center;
-    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.1);
-    border-radius: 8px;
-    background-color: #fff;
+    background-color: var(--bg-color);
+    color: var(--text-color);
   }
+
   .image-wrapper {
-    width: 200px; /* Fixed width for consistency */
-    height: 150px; /* Fixed height for consistency */
+    width: 80vw; /* Adjust as needed */
+    height: 70vh; /* Adjust as needed */
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 10px auto;
-    border-radius: 4px;
-    background-color: #f0f0f0;
-    color: #666;
-    font-size: 0.9em;
-    overflow: hidden; /* Hide overflow if image is larger */
+    margin-bottom: 20px;
+    border-radius: 8px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    overflow: hidden;
   }
+
   .photo-card img {
     max-width: 100%;
     max-height: 100%;
-    display: block;
-    object-fit: contain; /* Ensure image fits within bounds */
+    object-fit: contain;
   }
+
+  .not-generated-text {
+    font-size: 1.5em;
+    color: var(--text-color);
+  }
+
   .photo-card h3 {
-    margin-top: 0;
-    margin-bottom: 10px;
-    color: #333;
+    font-size: 2em;
+    margin-bottom: 20px;
+    color: var(--text-color);
   }
+
   .buttons {
     display: flex;
-    gap: 10px;
-    justify-content: center;
+    gap: 15px;
   }
+
   .buttons button {
-    padding: 8px 15px;
+    padding: 12px 25px;
     border: none;
-    border-radius: 5px;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 1em;
-    transition: background-color 0.2s ease;
+    font-size: 1.1em;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    font-family: 'Roboto Mono', monospace;
   }
+
+  .buttons button:active {
+    transform: scale(0.98);
+  }
+
   .buttons button.approve {
-    background-color: #4CAF50;
+    background-color: var(--button-approve-bg);
     color: white;
   }
+
   .buttons button.approve:hover {
-    background-color: #45a049;
+    background-color: var(--button-approve-hover-bg);
   }
+
   .buttons button.regenerate {
-    background-color: #f44336;
+    background-color: var(--button-regenerate-bg);
     color: white;
   }
+
   .buttons button.regenerate:hover {
-    background-color: #da190b;
+    background-color: var(--button-regenerate-hover-bg);
+  }
+
+  .sidebar {
+    width: 80px; /* Fixed width for sidebar */
+    background-color: var(--sidebar-bg);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 20px 0;
+    gap: 30px;
+    border-left: 1px solid var(--border-color);
+  }
+
+  .sidebar button {
+    background-color: var(--sidebar-button-bg);
+    color: var(--sidebar-text);
+    border: none;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    font-size: 2em;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+  }
+
+  .sidebar button:hover {
+    background-color: var(--sidebar-button-hover-bg);
+  }
+
+  .sidebar button:active {
+    transform: scale(0.95);
   }
 </style>
 
-<div class="container">
-  {#each daysOfWeek as day}
-    <div class="photo-card">
-      <h3>{day}</h3>
-      <div class="image-wrapper">
-        {#if imageErrors[day]}
-          <span>Not Generated</span>
-        {:else}
-          <img src="/api/photos/{day}" alt="Photo for {day}" on:error={() => handleImageError(day)} />
-        {/if}
+<div class="main-layout">
+  <div class="photo-scroll-container" bind:this={photoContainer}>
+    {#each daysOfWeek as day, i}
+      <div class="photo-card" id="day-{i}">
+        <h3>{day}</h3>
+        <div class="image-wrapper">
+          {#if imageErrors[day]}
+            <span class="not-generated-text">Not Generated</span>
+          {:else}
+            <img src="/api/photos/{day}" alt="Photo for {day}" on:error={() => handleImageError(day)} />
+          {/if}
+        </div>
+        <div class="buttons">
+          <button class="approve" on:click={() => handleClick(day, 'approve')}>Approve</button>
+          <button class="regenerate" on:click={() => handleClick(day, 'regenerate')}>Regenerate</button>
+        </div>
       </div>
-      <div class="buttons">
-        <button class="approve" on:click={() => handleClick(day, 'approve')}>Approve</button>
-        <button class="regenerate" on:click={() => handleClick(day, 'regenerate')}>Regenerate</button>
-      </div>
-    </div>
-  {/each}
+    {/each}
+  </div>
+
+  <div class="sidebar">
+    <button on:click={goToPrevDay}>&larr;</button>
+    <button on:click={goToNextDay}>&rarr;</button>
+  </div>
 </div>
