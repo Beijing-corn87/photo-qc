@@ -81,7 +81,7 @@
   {#each daysOfWeek as day}
     <div class="photo-card">
       <h3>{day}</h3>
-      <img src="/external-photos/{day}.png" alt="Photo for {day}" />
+      <img src="/api/photos/{day}" alt="Photo for {day}" />
       <div class="buttons">
         <button class="approve" on:click={() => handleClick(day, 'approve')}>Approve</button>
         <button class="regenerate" on:click={() => handleClick(day, 'regenerate')}>Regenerate</button>
