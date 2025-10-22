@@ -15,6 +15,8 @@ export async function GET({ params }) {
     return new Response(imageBuffer, {
       headers: {
         'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=604800', // Cache for 1 week
+        'X-Content-Type-Options': 'nosniff',
       },
     });
   } catch (err) {

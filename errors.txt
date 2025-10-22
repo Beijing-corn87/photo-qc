@@ -1,21 +1,31 @@
-  VITE v5.4.21  ready in 4537 ms
-
-  ➜  Local:   http://localhost:5173/
-  ➜  Network: http://192.168.1.249:5173/
-  ➜  Network: http://100.80.225.99:5173/
-  ➜  press h + enter to show help
-
-[404] GET /external-photos/Monday.png
-
-[404] GET /external-photos/Tuesday.png
-
-[404] GET /external-photos/Thursday.png
-
-[404] GET /external-photos/Wednesday.png
-
-[404] GET /external-photos/Friday.png
-
-[404] GET /external-photos/Saturday.png
-
-[404] GET /external-photos/Sunday.png
-
+Compatibility
+'scrollbar-width' is not supported by Safari.
+.photo-scroll-container.s-y_bCXRrkrYfP.s-y_bCXRrkrYfP {
+    scrollbar-width: none;
+}
+Request
+http://100.80.225.99:5173/
+Further Reading
+Learn more about this CSS feature on MDN
+Learn why this is important and how to fix it on webhint.io
+Performance
+A 'cache-control' header is missing or empty.
+Request
+http://100.80.225.99:3000/Monday/approve
+Further Reading
+Learn why this is important and how to fix it on webhint.io
+Security
+Ensure CORS response header values are valid
+Response should include 'x-content-type-options' header.
+Request
+http://100.80.225.99:3000/Monday/approve
+Further Reading
+Learn why this is important and how to fix it on webhint.io
+Response should not include disallowed headers: x-powered-by
+x-powered-by: express
+Open in
+Network
+Request
+http://100.80.225.99:3000/Monday/approve
+Further Reading
+Learn why this is important and how to fix it on webhint.io
