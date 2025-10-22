@@ -2,6 +2,14 @@
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const baseUrl = 'http://192.168.1.249:3000';
 
+  // Reactive store to track image loading errors
+  const imageErrors = {};
+  daysOfWeek.forEach(day => (imageErrors[day] = false));
+
+  function handleImageError(day) {
+    imageErrors[day] = true;
+  }
+
   async function handleClick(day, action) {
     const url = `${baseUrl}/${day}/${action}`;
     try {
@@ -9,6 +17,10 @@
       if (response.ok) {
         console.log(`${day} ${action} successful!`);
         alert(`${day} ${action} successful!`);
+        // If regenerate, reset error state to try loading image again
+        if (action === 'regenerate') {
+          imageErrors[day] = false;
+        }
       } else {
         console.error(`Failed to ${action} ${day}: ${response.statusText}`);
         alert(`Failed to ${action} ${day}: ${response.statusText}`);
@@ -36,12 +48,24 @@
     border-radius: 8px;
     background-color: #fff;
   }
-  .photo-card img {
-    max-width: 200px;
-    height: auto;
-    display: block;
+  .image-wrapper {
+    width: 200px; /* Fixed width for consistency */
+    height: 150px; /* Fixed height for consistency */
+    display: flex;
+    align-items: center;
+    justify-content: center;
     margin: 0 auto 10px auto;
     border-radius: 4px;
+    background-color: #f0f0f0;
+    color: #666;
+    font-size: 0.9em;
+    overflow: hidden; /* Hide overflow if image is larger */
+  }
+  .photo-card img {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+    object-fit: contain; /* Ensure image fits within bounds */
   }
   .photo-card h3 {
     margin-top: 0;
@@ -81,7 +105,13 @@
   {#each daysOfWeek as day}
     <div class="photo-card">
       <h3>{day}</h3>
-      <img src="/api/photos/{day}" alt="Photo for {day}" />
+      <div class="image-wrapper">
+        {#if imageErrors[day]}
+          <span>Not Generated</span>
+        {:else}
+          <img src="/api/photos/{day}" alt="Photo for {day}" on:error={() => handleImageError(day)} />
+        {/if}
+      </div>
       <div class="buttons">
         <button class="approve" on:click={() => handleClick(day, 'approve')}>Approve</button>
         <button class="regenerate" on:click={() => handleClick(day, 'regenerate')}>Regenerate</button>
