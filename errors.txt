@@ -1,31 +1,74 @@
-Compatibility
-'scrollbar-width' is not supported by Safari.
-.photo-scroll-container.s-y_bCXRrkrYfP.s-y_bCXRrkrYfP {
-    scrollbar-width: none;
-}
-Request
-http://100.80.225.99:5173/
-Further Reading
-Learn more about this CSS feature on MDN
-Learn why this is important and how to fix it on webhint.io
-Performance
-A 'cache-control' header is missing or empty.
-Request
-http://100.80.225.99:3000/Monday/approve
-Further Reading
-Learn why this is important and how to fix it on webhint.io
-Security
-Ensure CORS response header values are valid
-Response should include 'x-content-type-options' header.
-Request
-http://100.80.225.99:3000/Monday/approve
-Further Reading
-Learn why this is important and how to fix it on webhint.io
-Response should not include disallowed headers: x-powered-by
-x-powered-by: express
-Open in
-Network
-Request
-http://100.80.225.99:3000/Monday/approve
-Further Reading
-Learn why this is important and how to fix it on webhint.io
++layout.svelte:3  <Layout> was created with unknown prop 'params'
+warn @ client.js:3150
+(anonymous) @ +layout.svelte:3
+instance @ +layout.svelte:3
+init @ Component.js:135
+Layout @ +layout.svelte:3
+createProxiedComponent @ svelte-hooks.js:341
+ProxyComponent @ proxy.js:242
+Proxy<+layout> @ proxy.js:349
+construct_svelte_component_dev @ dev.js:257
+create_if_block_2 @ root.svelte:46
+create_fragment @ root.svelte:45
+init @ Component.js:148
+Root @ root.svelte:21
+createProxiedComponent @ svelte-hooks.js:341
+ProxyComponent @ proxy.js:242
+Proxy<Root> @ proxy.js:349
+initialize @ client.js:558
+_hydrate @ client.js:2797
+await in _hydrate
+start @ client.js:356
+await in start
+(anonymous) @ (index):60
+Promise.then
+(anonymous) @ (index):59
++page.svelte:73  <Page> was created with unknown prop 'params'
+warn @ client.js:3150
+(anonymous) @ +page.svelte:73
+instance @ +page.svelte:73
+init @ Component.js:135
+Page @ +page.svelte:57
+createProxiedComponent @ svelte-hooks.js:341
+ProxyComponent @ proxy.js:242
+Proxy<+page> @ proxy.js:349
+construct_svelte_component_dev @ dev.js:257
+create_default_slot @ root.svelte:47
+create_slot @ utils.js:165
+create_fragment @ +layout.svelte:2
+init @ Component.js:148
+Layout @ +layout.svelte:3
+createProxiedComponent @ svelte-hooks.js:341
+ProxyComponent @ proxy.js:242
+Proxy<+layout> @ proxy.js:349
+construct_svelte_component_dev @ dev.js:257
+create_if_block_2 @ root.svelte:46
+create_fragment @ root.svelte:45
+init @ Component.js:148
+Root @ root.svelte:21
+createProxiedComponent @ svelte-hooks.js:341
+ProxyComponent @ proxy.js:242
+Proxy<Root> @ proxy.js:349
+initialize @ client.js:558
+_hydrate @ client.js:2797
+await in _hydrate
+start @ client.js:356
+await in start
+(anonymous) @ (index):60
+Promise.then
+(anonymous) @ (index):59
+(index):1  Access to fetch at 'http://100.80.225.99:3000/Monday/approve' from origin 'http://100.80.225.99:5173' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
++page.svelte:21   GET http://100.80.225.99:3000/Monday/approve net::ERR_FAILED 200 (OK)
+window.fetch @ fetcher.js:66
+handleClick @ +page.svelte:21
+click_handler @ +page.svelte:229
+click_handler @ +page.svelte:222
++page.svelte:37  Error approveing Monday: TypeError: Failed to fetch
+    at window.fetch (fetcher.js:66:10)
+    at handleClick (+page.svelte:21:30)
+    at Array.click_handler (+page.svelte:229:51)
+    at HTMLButtonElement.click_handler (+page.svelte:222:31)
+handleClick @ +page.svelte:37
+await in handleClick
+click_handler @ +page.svelte:229
+click_handler @ +page.svelte:222

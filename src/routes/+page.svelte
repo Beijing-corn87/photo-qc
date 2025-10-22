@@ -1,8 +1,10 @@
 <script>
   import { onMount } from 'svelte';
+  export let data;
+  export let params;
 
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const baseUrl = 'http://192.168.1.249:3000';
+  const baseUrl = 'http://100.80.225.99:3000';
 
   let currentDayIndex = 0;
   let imageErrors = {};
@@ -14,27 +16,15 @@
     imageErrors = { ...imageErrors, [day]: true };
   }
 
-  async function handleClick(day, action) {
+  function handleClick(day, action) {
     const url = `${baseUrl}/${day}/${action}`;
-    try {
-      const response = await fetch(url);
-      if (response.ok) {
-        console.log(`${day} ${action} successful!`);
-        alert(`${day} ${action} successful!`);
-        if (action === 'regenerate') {
-          // Force re-render of image by changing its src or key
-          // For simplicity, we'll just reset the error state and hope it reloads
-          imageErrors = { ...imageErrors, [day]: false };
-          // A more robust solution might involve appending a timestamp to the src
-          // or using a Svelte key directive to force component re-creation.
-        }
-      } else {
-        console.error(`Failed to ${action} ${day}: ${response.statusText}`);
-        alert(`Failed to ${action} ${day}: ${response.statusText}`);
-      }
-    } catch (error) {
-      console.error(`Error ${action}ing ${day}:`, error);
-      alert(`Error ${action}ing ${day}: ${error.message}`);
+    window.open(url, '_blank');
+    if (action === 'regenerate') {
+      // Force re-render of image by changing its src or key
+      // For simplicity, we'll just reset the error state and hope it reloads
+      imageErrors = { ...imageErrors, [day]: false };
+      // A more robust solution might involve appending a timestamp to the src
+      // or using a Svelte key directive to force component re-creation.
     }
   }
 

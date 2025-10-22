@@ -17,6 +17,7 @@ export async function GET({ params }) {
         'Content-Type': 'image/png',
         'Cache-Control': 'public, max-age=604800', // Cache for 1 week
         'X-Content-Type-Options': 'nosniff',
+        'Access-Control-Allow-Origin': 'http://100.80.225.99:5173',
       },
     });
   } catch (err) {
