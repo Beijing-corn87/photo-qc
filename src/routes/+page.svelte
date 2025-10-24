@@ -4,7 +4,7 @@
   export let params;
 
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const baseUrl = 'http://100.80.225.99:3000';
+  const baseUrl = 'http://100.73.61.47:3000';
 
   let currentDayIndex = 0;
   let imageErrors = {};
