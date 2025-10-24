@@ -4,7 +4,7 @@
   export let params;
 
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const baseUrl = 'http://100.73.61.47:3000';
+  const baseUrl = 'http://100.94.216.120/:5678/webhook/cf0bbfae-4acc-4663-9e95-af65c043e7ca';
 
   let currentDayIndex = 0;
   let imageErrors = {};
