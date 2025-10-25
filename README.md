@@ -45,7 +45,7 @@ Follow these steps to get the application running on your local machine:
     The server is configured to listen on all network interfaces (`0.0.0.0`), so you can access it from other devices on your network using your machine's IP address (e.g., `http://your-ip-address:5173`).
 
 5.  **Access the application:**
-    Open your web browser and navigate to `http://localhost:5173` (or your machine's IP address).
+    Open your web browser and navigate to the dev server URL printed by Vite (for example, `http://<your-machine-ip>:5173`). Use the exact URL shown in the terminal after running `npm run dev`.
 
 ## Deployment to Production (Linux Server)
 
