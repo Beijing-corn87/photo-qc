@@ -16,15 +16,6 @@
 	const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 	// default to monday if no day param is present (e.g. visiting `/`)
 	let currentDay = 'monday';
-	
-	// Configurable retry settings
-	const MAX_RETRIES = 3;
-	const RETRY_DELAY = 1000; // ms
-	
-	// Track action states
-	let actionInProgress = false;
-	let lastError = null;
-	
 	// Track loaded images and their states in the gallery
 	let galleryImages = days.reduce((acc, day) => ({ ...acc, [day]: { 
 		url: '', 
@@ -79,11 +70,9 @@ let showGallery = true;
 				console.log(`[${day}] Fetching image - attempt ${attempt + 1}/${MAX_RETRIES}`);
 			const response = await fetch(`${API_BASE}/api/photos/${day}`);
 			if (response.ok) {
-				if (response.ok) {
 				const blob = await response.blob();
 				const url = URL.createObjectURL(blob);
-					console.log(`[${day}] Image loaded successfully (${Math.round((Date.now() - startTime) / 1000)}s)`);
-				
+				console.log(`[${day}] Image loaded successfully (${Math.round((Date.now() - startTime) / 1000)}s)`);
 				if (isGallery) {
 					galleryImages[day] = {
 						...galleryImages[day],
