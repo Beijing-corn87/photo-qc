@@ -1,0 +1,8 @@
+{
+	"/": [
+		"src/routes/+server.js"
+	],
+	"/api/photos/[day]": [
+		"src/routes/api/photos/[day]/+server.js"
+	]
+}
