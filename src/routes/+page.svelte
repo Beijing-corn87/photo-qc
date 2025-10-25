@@ -4,9 +4,26 @@
 	import { fade } from 'svelte/transition';
 
 	const API_BASE = 'http://localhost:3000';
+	// Configurable settings
+	const MAX_RETRIES = 3;
+	const RETRY_DELAY = 1000; // ms
+	const REFRESH_DELAY = 1500; // ms
+
+	// Track action states
+	let actionInProgress = false;
+	let lastError = null;
+	let loadingStates = {};
 	const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 	// default to monday if no day param is present (e.g. visiting `/`)
 	let currentDay = 'monday';
+	
+	// Configurable retry settings
+	const MAX_RETRIES = 3;
+	const RETRY_DELAY = 1000; // ms
+	
+	// Track action states
+	let actionInProgress = false;
+	let lastError = null;
 	
 	// Track loaded images and their states in the gallery
 	let galleryImages = days.reduce((acc, day) => ({ ...acc, [day]: { 
@@ -47,17 +64,25 @@
 let showGallery = true;
 
 	async function fetchImage(day, isGallery = false) {
+		const startTime = Date.now();
+		loadingStates[day] = true;
+		let attempt = 0;
+
 		if (isGallery) {
 			galleryImages[day].status = 'loading';
 		} else {
 			imageStatus = 'loading';
 		}
 
-		try {
+		while (attempt < MAX_RETRIES) {
+			try {
+				console.log(`[${day}] Fetching image - attempt ${attempt + 1}/${MAX_RETRIES}`);
 			const response = await fetch(`${API_BASE}/api/photos/${day}`);
 			if (response.ok) {
+				if (response.ok) {
 				const blob = await response.blob();
 				const url = URL.createObjectURL(blob);
+					console.log(`[${day}] Image loaded successfully (${Math.round((Date.now() - startTime) / 1000)}s)`);
 				
 				if (isGallery) {
 					galleryImages[day] = {
@@ -69,14 +94,18 @@ let showGallery = true;
 					imageUrl = url;
 					imageStatus = 'loaded';
 				}
+					break;
 			} else if (response.status === 202) {
+					console.log(`[${day}] Image is being generated`);
 				if (isGallery) {
 					galleryImages[day].status = 'generating';
 				} else {
 					imageStatus = 'generating';
 				}
+					break;
 			} else {
 				const error = (await response.text()) || 'Image not found';
+					console.error(`[${day}] Server error: ${response.status} - ${error}`);
 				if (isGallery) {
 					galleryImages[day] = {
 						...galleryImages[day],
@@ -87,49 +116,91 @@ let showGallery = true;
 					errorMessage = error;
 					imageStatus = 'error';
 				}
+					throw new Error(`HTTP ${response.status}: ${error}`);
 			}
-		} catch (err) {
-			console.error(`Failed to fetch image for ${day}:`, err);
-			const error = 'Failed to load image.';
-			if (isGallery) {
-				galleryImages[day] = {
-					...galleryImages[day],
-					status: 'error',
-					error
-				};
-			} else {
-				errorMessage = error;
-				imageStatus = 'error';
+			} catch (err) {
+				attempt++;
+				console.error(`[${day}] Attempt ${attempt} failed:`, err.message);
+				
+				if (attempt === MAX_RETRIES) {
+					const error = 'Failed to load image after multiple attempts';
+					console.error(`[${day}] ${error}`);
+					
+					if (isGallery) {
+						galleryImages[day] = {
+							...galleryImages[day],
+							status: 'error',
+							error
+						};
+					} else {
+						errorMessage = error;
+						imageStatus = 'error';
+					}
+					lastError = error;
+					break;
+				}
+				
+				console.log(`[${day}] Retrying in ${RETRY_DELAY}ms...`);
+				await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
 			}
 		}
+		
+		loadingStates[day] = false;
 	}
 
 	let showBatchRegenModal = false;
 	let batchRegenDescription = '';
 	
 	async function handleBatchRegen() {
+		actionInProgress = true;
+		lastError = null;
+		let attempt = 0;
+		const startTime = Date.now();
+
+		while (attempt < MAX_RETRIES) {
 		try {
+			console.log(`[Batch] Starting regeneration - attempt ${attempt + 1}/${MAX_RETRIES}`);
 			const response = await fetch(`${API_BASE}/api/actions/regenerate-all`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ description: batchRegenDescription })
+				body: JSON.stringify({ 
+					action: 'regenerate-all',
+					description: batchRegenDescription
+				})
 			});
 			
 			const result = await response.json();
 			if (response.ok) {
+				console.log(`[Batch] Regeneration started successfully (${Math.round((Date.now() - startTime) / 1000)}s)`);
 				alert(result.message || 'Batch regeneration started');
 				showBatchRegenModal = false;
 				// Refresh all images after a short delay
 				setTimeout(() => {
 					days.forEach(day => fetchImage(day, true));
-				}, 1000);
+				}, REFRESH_DELAY);
+				break;
 			} else {
+				console.error(`[Batch] Server error: ${response.status} - ${result.message}`);
 				alert(`Error: ${result.message}`);
+				throw new Error(`HTTP ${response.status}: ${result.message}`);
 			}
 		} catch (err) {
-			console.error('Failed to start batch regeneration:', err);
-			alert('Failed to start batch regeneration');
+			attempt++;
+			console.error(`[Batch] Attempt ${attempt} failed:`, err.message);
+			
+			if (attempt === MAX_RETRIES) {
+				console.error('[Batch] Failed to start regeneration after multiple attempts');
+				alert('Failed to start batch regeneration');
+				lastError = err.message;
+				break;
+			}
+			
+			console.log(`[Batch] Retrying in ${RETRY_DELAY}ms...`);
+			await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
 		}
+		}
+		
+		actionInProgress = false;
 	}
 
 	onMount(() => {
@@ -161,43 +232,80 @@ let showGallery = true;
 		fetchImage(currentDay);
 	}
 
-	async function handleAction(action) {
+	async function handleAction(action, targetDay = currentDay) {
+		if (actionInProgress) {
+			console.log(`[${targetDay}] Action already in progress, please wait...`);
+			return;
+		}
+
+		actionInProgress = true;
+		lastError = null;
+		let attempt = 0;
+		const startTime = Date.now();
 		let url, options;
 
 		if (action === 'approve') {
-			url = `${API_BASE}/api/actions/approve/${currentDay}`;
-			options = { method: 'POST' };
+			url = `${API_BASE}/api/actions/approve/${targetDay}`;
+			options = {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ day: targetDay, action: 'approved' })
+			};
 		} else if (action === 'regenerate') {
 			if (noDescription) {
 				regenDescription = '';
 			}
 			if (!noDescription && !regenDescription.trim()) {
 				alert('Please provide a description or check the box to regenerate without one.');
+				actionInProgress = false;
 				return;
 			}
-			url = `${API_BASE}/api/actions/regenerate-single/${currentDay}`;
+			url = `${API_BASE}/api/actions/regenerate-single/${targetDay}`;
 			options = {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ description: regenDescription })
+				body: JSON.stringify({ 
+					day: targetDay, 
+					action: 'regenerated',
+					description: regenDescription 
+				})
 			};
 		}
 
+		while (attempt < MAX_RETRIES) {
 		try {
+			console.log(`[${targetDay}] Starting ${action} - attempt ${attempt + 1}/${MAX_RETRIES}`);
 			const response = await fetch(url, options);
 			const result = await response.json();
 			if (response.ok) {
+				console.log(`[${targetDay}] ${action} successful (${Math.round((Date.now() - startTime) / 1000)}s)`);
 				alert(result.message);
 				showRegenModal = false;
 				// Refresh the image status
-				setTimeout(() => fetchImage(currentDay), 1000);
+				setTimeout(() => fetchImage(targetDay, showGallery), REFRESH_DELAY);
+				break;
 			} else {
+				console.error(`[${targetDay}] Server error: ${response.status} - ${result.message}`);
 				alert(`Error: ${result.message}`);
+				throw new Error(`HTTP ${response.status}: ${result.message}`);
 			}
 		} catch (err) {
-			console.error(`Failed to ${action} ${currentDay}:`, err);
-			alert(`An error occurred during the ${action} action.`);
+			attempt++;
+			console.error(`[${targetDay}] Attempt ${attempt} failed:`, err.message);
+			
+			if (attempt === MAX_RETRIES) {
+				console.error(`[${targetDay}] ${action} failed after multiple attempts`);
+				alert(`An error occurred during the ${action} action.`);
+				lastError = err.message;
+				break;
+			}
+			
+			console.log(`[${targetDay}] Retrying in ${RETRY_DELAY}ms...`);
+			await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
 		}
+		}
+		
+		actionInProgress = false;
 	}
 </script>
 
@@ -303,6 +411,14 @@ let showGallery = true;
 	}}>
 		<div class="modal-content" on:click|stopPropagation>
 			<h2>{showBatchRegenModal ? 'Regenerate All Photos' : 'Regenerate Photo'}</h2>
+			{#if actionInProgress}
+				<div class="loading-indicator">Processing request...</div>
+			{/if}
+			{#if lastError}
+				<div class="error-message">
+					Last error: {lastError}
+				</div>
+			{/if}
 			<p>
 				{#if showBatchRegenModal}
 					Provide an optional description to guide the regeneration of all photos.
@@ -633,6 +749,20 @@ let showGallery = true;
 	}
 
 	/* Modal Styles */
+	.loading-indicator {
+		padding: 0.5rem;
+		text-align: center;
+		color: var(--text-color);
+		font-style: italic;
+	}
+	
+	.error-message {
+		padding: 0.5rem;
+		color: #ff4444;
+		background: rgba(255, 68, 68, 0.1);
+		border-radius: 4px;
+	}
+	
 	.modal-backdrop {
 		position: fixed;
 		top: 0;
