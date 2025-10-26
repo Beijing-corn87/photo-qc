@@ -1,5 +1,5 @@
 # Photo QC App
-![GitHub stars](https://img.shields.io/github/stars/Beijing-corn87/photo-qc) ![CI](https://github.com/Beijing-corn87/photo-qc/actions/workflows/ci.yml/badge.svg) ![GitHub license](https://img.shields.io/github/license/Beijing-corn87/photo-q) ![GitHub last commit](https://img.shields.io/github/last-commit/Beijing-corn87/photo-qc) ![GitHub issues](https://img.shields.io/github/issues/Beijing-corn87/photo-qc)
+![GitHub stars](https://img.shields.io/github/stars/Beijing-corn87/photo-qc) ![CI](https://github.com/Beijing-corn87/photo-qc/actions/workflows/ci.yml/badge.svg) ![GitHub license](https://img.shields.io/github/license/Beijing-corn87/photo-qc) ![GitHub last commit](https://img.shields.io/github/last-commit/Beijing-corn87/photo-qc) ![GitHub issues](https://img.shields.io/github/issues/Beijing-corn87/photo-qc)
 
 A SvelteKit web application designed for quality control of daily photos. It displays seven photos, one for each day of the week, allowing users to approve or regenerate them via a simple interface.
 
