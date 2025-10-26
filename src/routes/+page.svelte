@@ -3,7 +3,8 @@
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
 
-	const API_BASE = 'http://localhost:3000';
+	// Use relative API paths so requests go to the same dev server (avoid external localhost:3000 dependency)
+	const API_BASE = '';
 	// Configurable settings
 	const MAX_RETRIES = 3;
 	const RETRY_DELAY = 1000; // ms
