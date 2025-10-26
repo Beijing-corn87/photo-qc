@@ -1,229 +1,850 @@
 <script>
-  import { onMount } from 'svelte';
-  export let data;
-  export let params;
+	import { page } from '$app/stores';
+	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
+	import { fade } from 'svelte/transition';
 
-  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const baseUrl = 'http://100.73.61.47:3000';
+	// Use Vite env var VITE_API_BASE to point to an external API (e.g. http://localhost:3000).
+	// If not set, the app will use relative in-app endpoints under /api.
+	const API_BASE = import.meta.env.VITE_API_BASE || '';
 
-  let currentDayIndex = 0;
-  let imageErrors = {};
-  daysOfWeek.forEach(day => (imageErrors[day] = false));
+	console.log('API base:', API_BASE || '(using built-in /api endpoints)');
+	// Configurable settings
+	const MAX_RETRIES = 3;
+	const RETRY_DELAY = 1000; // ms
+	const REFRESH_DELAY = 1500; // ms
 
-  let photoContainer;
+	// Track action states
+	let actionInProgress = false;
+	let lastError = null;
+	let loadingStates = {};
+	const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+	// default to monday if no day param is present (e.g. visiting `/`)
+	let currentDay = 'monday';
+	// Track loaded images and their states in the gallery
+	let galleryImages = days.reduce((acc, day) => ({ ...acc, [day]: { 
+		url: '', 
+		status: 'loading',
+		isHovered: false 
+	}}), {});
 
-  function handleImageError(day) {
-    imageErrors = { ...imageErrors, [day]: true };
-  }
+	// Be defensive: `$page` may be undefined during some SSR or navigation states,
+	// and `params.day` may be missing — avoid calling `toLowerCase` on undefined.
+	$: {
+		const dayParam = $page?.params?.day;
 
-  function handleClick(day, action) {
-    const url = `${baseUrl}/${day}/${action}`;
-    window.open(url, '_blank');
-    if (action === 'regenerate') {
-      // Force re-render of image by changing its src or key
-      // For simplicity, we'll just reset the error state and hope it reloads
-      imageErrors = { ...imageErrors, [day]: false };
-      // A more robust solution might involve appending a timestamp to the src
-      // or using a Svelte key directive to force component re-creation.
-    }
-  }
+		if (typeof dayParam === 'string' && dayParam.trim()) {
+	 		currentDay = dayParam.toLowerCase();
+	 	} else if (!currentDay) {
+	 		currentDay = 'monday';
+	 	}
+	}
 
-  function goToNextDay() {
-    currentDayIndex = (currentDayIndex + 1) % daysOfWeek.length;
-  }
+	// Load all images when in gallery view (only run client-side to avoid SSR fetch of relative URLs)
+	$: if (browser && showGallery) {
+		days.forEach(day => {
+			fetchImage(day, true);
+		});
+	}
 
-  function goToPrevDay() {
-    currentDayIndex = (currentDayIndex - 1 + daysOfWeek.length) % daysOfWeek.length;
-  }
+	$: currentIndex = days.indexOf(currentDay);
 
-  // Scroll to the current day when currentDayIndex changes
-  $: if (photoContainer) {
-    const targetElement = photoContainer.children[currentDayIndex];
-    if (targetElement) {
-      targetElement.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center'
-      });
-    }
-  }
+	let imageStatus = 'loading'; // 'loading', 'loaded', 'generating', 'error'
+	let errorMessage = 'Not Generated';
+	let imageUrl = '';
 
-  // Keyboard navigation
-  onMount(() => {
-    const handleKeyDown = (event) => {
-      if (event.key === 'ArrowRight') {
-        goToNextDay();
-      } else if (event.key === 'ArrowLeft') {
-        goToPrevDay();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  });
+	let showRegenModal = false;
+	let regenDescription = '';
+	let noDescription = false;
+// When true, show the gallery/main menu. When false, show the single-day detail view.
+let showGallery = true;
+
+	async function fetchImage(day, isGallery = false) {
+		const startTime = Date.now();
+		loadingStates[day] = true;
+		let attempt = 0;
+
+		// If running on the server and we're using the in-app relative API (API_BASE === ''),
+		// do not attempt to fetch — server-side rendering cannot fetch relative URLs.
+		if (!browser && !API_BASE) {
+			// Leave status as 'loading' for the client to pick up and fetch on mount.
+			if (isGallery) {
+				galleryImages[day].status = 'loading';
+			} else {
+				imageStatus = 'loading';
+			}
+			loadingStates[day] = false;
+			console.log(`[${day}] Skipping fetch during SSR for relative URL`);
+			return;
+		}
+
+		if (isGallery) {
+			galleryImages[day].status = 'loading';
+		} else {
+			imageStatus = 'loading';
+		}
+
+		while (attempt < MAX_RETRIES) {
+			try {
+				console.log(`[${day}] Fetching image - attempt ${attempt + 1}/${MAX_RETRIES}`);
+			const response = await fetch(`${API_BASE}/api/photos/${day}`);
+			if (response.ok) {
+				const blob = await response.blob();
+				const url = URL.createObjectURL(blob);
+				console.log(`[${day}] Image loaded successfully (${Math.round((Date.now() - startTime) / 1000)}s)`);
+				if (isGallery) {
+					galleryImages[day] = {
+						...galleryImages[day],
+						url,
+						status: 'loaded'
+					};
+				} else {
+					imageUrl = url;
+					imageStatus = 'loaded';
+				}
+					break;
+			} else if (response.status === 202) {
+					console.log(`[${day}] Image is being generated`);
+				if (isGallery) {
+					galleryImages[day].status = 'generating';
+				} else {
+					imageStatus = 'generating';
+				}
+					break;
+			} else {
+				const error = (await response.text()) || 'Image not found';
+					console.error(`[${day}] Server error: ${response.status} - ${error}`);
+				if (isGallery) {
+					galleryImages[day] = {
+						...galleryImages[day],
+						status: 'error',
+						error
+					};
+				} else {
+					errorMessage = error;
+					imageStatus = 'error';
+				}
+					throw new Error(`HTTP ${response.status}: ${error}`);
+			}
+			} catch (err) {
+				attempt++;
+				console.error(`[${day}] Attempt ${attempt} failed:`, err.message);
+				
+				if (attempt === MAX_RETRIES) {
+					const error = 'Failed to load image after multiple attempts';
+					console.error(`[${day}] ${error}`);
+					
+					if (isGallery) {
+						galleryImages[day] = {
+							...galleryImages[day],
+							status: 'error',
+							error
+						};
+					} else {
+						errorMessage = error;
+						imageStatus = 'error';
+					}
+					lastError = error;
+					break;
+				}
+				
+				console.log(`[${day}] Retrying in ${RETRY_DELAY}ms...`);
+				await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+			}
+		}
+		
+		loadingStates[day] = false;
+	}
+
+	let showBatchRegenModal = false;
+	let batchRegenDescription = '';
+	
+	async function handleBatchRegen() {
+		actionInProgress = true;
+		lastError = null;
+		let attempt = 0;
+		const startTime = Date.now();
+
+		while (attempt < MAX_RETRIES) {
+		try {
+			console.log(`[Batch] Starting regeneration - attempt ${attempt + 1}/${MAX_RETRIES}`);
+			const response = await fetch(`${API_BASE}/api/actions/regenerate-all`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ 
+					action: 'regenerate-all',
+					description: batchRegenDescription
+				})
+			});
+			
+			const result = await response.json();
+			if (response.ok) {
+				console.log(`[Batch] Regeneration started successfully (${Math.round((Date.now() - startTime) / 1000)}s)`);
+				alert(result.message || 'Batch regeneration started');
+				showBatchRegenModal = false;
+				// Refresh all images after a short delay
+				setTimeout(() => {
+					days.forEach(day => fetchImage(day, true));
+				}, REFRESH_DELAY);
+				break;
+			} else {
+				console.error(`[Batch] Server error: ${response.status} - ${result.message}`);
+				alert(`Error: ${result.message}`);
+				throw new Error(`HTTP ${response.status}: ${result.message}`);
+			}
+		} catch (err) {
+			attempt++;
+			console.error(`[Batch] Attempt ${attempt} failed:`, err.message);
+			
+			if (attempt === MAX_RETRIES) {
+				console.error('[Batch] Failed to start regeneration after multiple attempts');
+				alert('Failed to start batch regeneration');
+				lastError = err.message;
+				break;
+			}
+			
+			console.log(`[Batch] Retrying in ${RETRY_DELAY}ms...`);
+			await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+		}
+		}
+		
+		actionInProgress = false;
+	}
+
+	onMount(() => {
+		fetchImage(currentDay);
+		// If we start in detail view (a day param exists), load that image.
+		if (!showGallery) {
+			fetchImage(currentDay);
+		}
+
+		const handleKeydown = (e) => {
+			if (e.key === 'ArrowLeft') navigate(-1);
+			if (e.key === 'ArrowRight') navigate(1);
+		};
+		window.addEventListener('keydown', handleKeydown);
+		return () => window.removeEventListener('keydown', handleKeydown);
+	});
+
+	function navigate(direction) {
+		// Update local state instead of navigating the browser — keep the URL on the main menu
+		const newIndex = (currentIndex + direction + days.length) % days.length;
+		currentDay = days[newIndex];
+		// reactive `currentIndex` will update from `currentDay`, and we need to load the image
+		fetchImage(currentDay);
+	}
+
+	function openDetail(day) {
+		showGallery = false;
+		currentDay = day;
+		fetchImage(currentDay);
+	}
+
+	async function handleAction(action, targetDay = currentDay) {
+		if (actionInProgress) {
+			console.log(`[${targetDay}] Action already in progress, please wait...`);
+			return;
+		}
+
+		actionInProgress = true;
+		lastError = null;
+		let attempt = 0;
+		const startTime = Date.now();
+		let url, options;
+
+		if (action === 'approve') {
+			url = `${API_BASE}/api/actions/approve/${targetDay}`;
+			options = {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ day: targetDay, action: 'approved' })
+			};
+		} else if (action === 'regenerate') {
+			if (noDescription) {
+				regenDescription = '';
+			}
+			if (!noDescription && !regenDescription.trim()) {
+				alert('Please provide a description or check the box to regenerate without one.');
+				actionInProgress = false;
+				return;
+			}
+			url = `${API_BASE}/api/actions/regenerate-single/${targetDay}`;
+			options = {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ 
+					day: targetDay, 
+					action: 'regenerated',
+					description: regenDescription 
+				})
+			};
+		}
+
+		while (attempt < MAX_RETRIES) {
+		try {
+			console.log(`[${targetDay}] Starting ${action} - attempt ${attempt + 1}/${MAX_RETRIES}`);
+			const response = await fetch(url, options);
+			const result = await response.json();
+			if (response.ok) {
+				console.log(`[${targetDay}] ${action} successful (${Math.round((Date.now() - startTime) / 1000)}s)`);
+				alert(result.message);
+				showRegenModal = false;
+				// Refresh the image status
+				setTimeout(() => fetchImage(targetDay, showGallery), REFRESH_DELAY);
+				break;
+			} else {
+				console.error(`[${targetDay}] Server error: ${response.status} - ${result.message}`);
+				alert(`Error: ${result.message}`);
+				throw new Error(`HTTP ${response.status}: ${result.message}`);
+			}
+		} catch (err) {
+			attempt++;
+			console.error(`[${targetDay}] Attempt ${attempt} failed:`, err.message);
+			
+			if (attempt === MAX_RETRIES) {
+				console.error(`[${targetDay}] ${action} failed after multiple attempts`);
+				alert(`An error occurred during the ${action} action.`);
+				lastError = err.message;
+				break;
+			}
+			
+			console.log(`[${targetDay}] Retrying in ${RETRY_DELAY}ms...`);
+			await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+		}
+		}
+		
+		actionInProgress = false;
+	}
 </script>
 
+<svelte:head>
+	<title>QC - {currentDay.charAt(0).toUpperCase() + currentDay.slice(1)}</title>
+</svelte:head>
+
+<main class="main-container">
+	<div class="image-scroll-container">
+		<div class="image-wrapper">
+			<div class="day-header">
+				<a href="/" class="back-link" on:click|preventDefault={() => (showGallery = true)}>&larr; Gallery</a>
+				<h1>{currentDay.charAt(0).toUpperCase() + currentDay.slice(1)}</h1>
+			</div>
+
+			<div class="image-content">
+				{#if imageStatus === 'loading'}
+					<div class="placeholder">Loading...</div>
+				{:else if imageStatus === 'generating'}
+					<div class="placeholder">Image is being generated...</div>
+				{:else if imageStatus === 'error'}
+					<div class="placeholder">{errorMessage}</div>
+				{:else if imageStatus === 'loaded'}
+					<img src={imageUrl} alt={currentDay} />
+				{/if}
+			</div>
+
+			<div class="actions">
+				<button class="approve" on:click={() => handleAction('approve')}>Approve</button>
+				<button class="regenerate" on:click={() => (showRegenModal = true)}>Regenerate</button>
+			</div>
+		</div>
+	</div>
+
+	{#if showGallery}
+		<div class="gallery-container">
+			<div class="gallery">
+				<div class="gallery-header">
+					<h1>Photo Gallery</h1>
+					<button class="batch-regen" on:click={() => showBatchRegenModal = true}>
+						Regenerate All Photos
+					</button>
+				</div>
+				<p class="gallery-subtitle">Hover over photos to approve or regenerate individually</p>
+				<div class="gallery-grid">
+					{#each days as d}
+						<div 
+							class="day-tile"
+							role="group"
+							on:mouseenter={() => galleryImages[d].isHovered = true}
+							on:mouseleave={() => galleryImages[d].isHovered = false}
+						>
+							<div class="day-name">{d.charAt(0).toUpperCase() + d.slice(1)}</div>
+							
+							<div class="image-container" class:is-hovered={galleryImages[d].isHovered}>
+								{#if galleryImages[d].status === 'loading'}
+									<div class="placeholder">Loading...</div>
+								{:else if galleryImages[d].status === 'generating'}
+									<div class="placeholder">Generating...</div>
+								{:else if galleryImages[d].status === 'error'}
+									<div class="placeholder">{galleryImages[d].error || 'Error'}</div>
+								{:else}
+									<img src={galleryImages[d].url} alt={d} />
+								{/if}
+
+								{#if galleryImages[d].isHovered}
+									<div class="hover-actions" transition:fade={{ duration: 150 }}>
+										<div class="hover-buttons">
+											<button 
+												class="approve" 
+												on:click|stopPropagation={() => handleAction('approve', d)}
+											>
+												Approve
+											</button>
+											<button 
+												class="regenerate" 
+												on:click|stopPropagation={() => {
+													currentDay = d;
+													showRegenModal = true;
+												}}
+											>
+												Regenerate
+											</button>
+										</div>
+									</div>
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
+		</div>
+	{/if}
+	<aside class="sidebar">
+		<button on:click={() => navigate(-1)} aria-label="Previous Day">&lt;</button>
+		<button on:click={() => navigate(1)} aria-label="Next Day">&gt;</button>
+	</aside>
+</main>
+
+{#if showRegenModal || showBatchRegenModal}
+	<div 
+		class="modal-backdrop" 
+		role="button" 
+		tabindex="0"
+		aria-label="Close modal"
+		on:click={() => {
+			showRegenModal = false;
+			showBatchRegenModal = false;
+		}}
+		on:keydown={(e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				showRegenModal = false;
+				showBatchRegenModal = false;
+			}
+		}}
+	>
+	<div class="modal-content" role="dialog" aria-modal="true" on:click|stopPropagation>
+			<h2>{showBatchRegenModal ? 'Regenerate All Photos' : 'Regenerate Photo'}</h2>
+			{#if actionInProgress}
+				<div class="loading-indicator">Processing request...</div>
+			{/if}
+			{#if lastError}
+				<div class="error-message">
+					Last error: {lastError}
+				</div>
+			{/if}
+			<p>
+				{#if showBatchRegenModal}
+					Provide an optional description to guide the regeneration of all photos.
+				{:else}
+					Provide a description for the changes you want, or check the box to regenerate without a specific prompt.
+				{/if}
+			</p>
+			
+			{#if showBatchRegenModal}
+				<textarea 
+					bind:value={batchRegenDescription} 
+					placeholder="e.g., 'make all photos more vibrant', 'use forest backgrounds'..."
+				></textarea>
+			{:else}
+				<textarea 
+					bind:value={regenDescription} 
+					placeholder="e.g., 'make it more vibrant', 'change the background to a forest'..." 
+					disabled={noDescription}
+				></textarea>
+				<label>
+					<input type="checkbox" bind:checked={noDescription} />
+					Regenerate without a description
+				</label>
+			{/if}
+
+			<div class="modal-actions">
+				<button class="cancel" on:click={() => {
+					showRegenModal = false;
+					showBatchRegenModal = false;
+				}}>Cancel</button>
+				<button 
+					class="submit-regen" 
+					on:click={() => {
+						if (showBatchRegenModal) {
+							handleBatchRegen();
+						} else {
+							handleAction('regenerate');
+						}
+					}}
+				>
+					Submit
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
-  .main-layout {
-    display: flex;
-    height: 100vh;
-    width: 100vw;
-    overflow: hidden; /* Hide main layout scrollbar */
-  }
+	.main-container {
+		display: flex;
+		height: 100vh;
+		width: 100vw;
+	}
+	.image-scroll-container {
+		flex-grow: 1;
+		display: flex;
+		overflow-x: hidden; /* We navigate via buttons, not scroll */
+	}
+	.image-wrapper {
+		min-width: 100%;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 2rem;
+		background-color: var(--bg-color);
+	}
+	.day-header {
+		position: absolute;
+		top: 2rem;
+		left: 2rem;
+		right: 2rem;
+		text-align: center;
+	}
+	.back-link {
+		position: absolute;
+		left: 0;
+		top: 50%;
+		transform: translateY(-50%);
+		color: var(--text-color);
+		text-decoration: none;
+		font-size: 1rem;
+	}
+	.back-link:hover {
+		text-decoration: underline;
+	}
+	.image-content {
+		flex-grow: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		max-height: calc(100% - 120px); /* Adjust for header and actions */
+	}
+	.image-content img {
+		max-width: 100%;
+		max-height: 100%;
+		object-fit: contain;
+		border: 1px solid var(--border-color);
+	}
+	.placeholder {
+		width: 80%;
+		height: 80%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: 2px dashed var(--border-color);
+		color: var(--text-color);
+		font-size: 1.5rem;
+	}
+	.actions {
+		padding-top: 1.5rem;
+		display: flex;
+		gap: 1rem;
+	}
+	.actions button {
+		padding: 10px 20px;
+		border: none;
+		border-radius: 5px;
+		cursor: pointer;
+		font-family: 'Space Mono', monospace;
+		font-size: 1rem;
+		transition: background-color 0.2s;
+	}
+	.approve {
+		background-color: var(--button-approve-bg);
+		color: white;
+	}
+	.approve:hover {
+		background-color: var(--button-approve-hover-bg);
+	}
+	.regenerate {
+		background-color: var(--button-regenerate-bg);
+		color: white;
+	}
+	.regenerate:hover {
+		background-color: var(--button-regenerate-hover-bg);
+	}
+	.sidebar {
+		flex-shrink: 0;
+		width: 60px;
+		background-color: var(--sidebar-bg);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+	}
+	.sidebar button {
+		width: 40px;
+		height: 40px;
+		background-color: var(--sidebar-button-bg);
+		color: var(--sidebar-text);
+		border: none;
+		border-radius: 50%;
+		font-size: 1.5rem;
+		cursor: pointer;
+		transition: background-color 0.2s;
+	}
+	.gallery-container {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: start;
+		justify-content: center;
+		padding: 2rem;
+		background: var(--bg-color);
+		z-index: 10;
+		overflow-y: auto;
+	}
+	.gallery {
+		width: 100%;
+		max-width: 1400px;
+		margin: 0 auto;
+		text-align: center;
+	}
+	.gallery-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 1rem;
+		padding: 0 1rem;
+	}
+	.gallery h1 {
+		font-size: 2.5rem;
+		color: var(--text-color);
+		margin: 0;
+	}
+	.batch-regen {
+		padding: 0.75rem 1.5rem;
+		background: var(--button-regenerate-bg);
+		color: white;
+		border: none;
+		border-radius: 8px;
+		font-size: 1rem;
+		cursor: pointer;
+		transition: all 0.2s ease-in-out;
+	}
+	.batch-regen:hover {
+		background: var(--button-regenerate-hover-bg);
+		transform: translateY(-1px);
+	}
+	.gallery-subtitle {
+		color: var(--text-color);
+		opacity: 0.7;
+		margin-bottom: 2rem;
+		font-size: 1.1rem;
+	}
+	.gallery-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+		gap: 2rem;
+		padding: 1rem;
+	}
+	.day-tile {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		border-radius: 12px;
+		background: var(--card-bg);
+		overflow: hidden;
+		transition: transform 0.3s ease-in-out;
+	}
+	.day-tile:hover {
+		transform: translateY(-4px);
+	}
+	.day-name {
+		font-size: 1.25rem;
+		font-weight: bold;
+		padding: 1rem;
+		color: var(--text-color);
+		background: var(--card-bg);
+		z-index: 2;
+	}
+	.image-container {
+		position: relative;
+		width: 100%;
+		padding-bottom: 75%; /* 4:3 aspect ratio */
+		background: var(--bg-color);
+		overflow: hidden;
+	}
+	.image-container img {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		transition: transform 0.3s ease-in-out;
+	}
+	.image-container.is-hovered img {
+		transform: scale(1.05);
+	}
+	.placeholder {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--bg-color);
+		color: var(--text-color);
+		font-size: 1rem;
+	}
+	.hover-actions {
+		position: absolute;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.7);
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		align-items: center;
+		opacity: 0;
+		animation: fadeIn 0.2s ease-out forwards;
+	}
+	.hover-buttons {
+		display: flex;
+		gap: 1rem;
+		transform: translateY(20px);
+		animation: slideUp 0.2s ease-out forwards;
+	}
+	.hover-buttons button {
+		padding: 0.75rem 1.5rem;
+		border: none;
+		border-radius: 6px;
+		font-size: 0.9rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.2s ease-in-out;
+	}
+	.hover-buttons .approve {
+		background: var(--button-approve-bg);
+		color: white;
+	}
+	.hover-buttons .approve:hover {
+		background: var(--button-approve-hover-bg);
+		transform: translateY(-2px);
+	}
+	.hover-buttons .regenerate {
+		background: var(--button-regenerate-bg);
+		color: white;
+	}
+	.hover-buttons .regenerate:hover {
+		background: var(--button-regenerate-hover-bg);
+		transform: translateY(-2px);
+	}
+	
+	@keyframes fadeIn {
+		from { opacity: 0; }
+		to { opacity: 1; }
+	}
+	
+	@keyframes slideUp {
+		from { 
+			transform: translateY(20px);
+			opacity: 0;
+		}
+		to { 
+			transform: translateY(0);
+			opacity: 1;
+		}
+	}
+	.sidebar button:hover {
+		background-color: var(--sidebar-button-hover-bg);
+	}
 
-  .photo-scroll-container {
-    flex-grow: 1;
-    display: flex;
-    overflow-x: scroll; /* Enable horizontal scrolling */
-    scroll-snap-type: x mandatory; /* Snap to full-screen images */
-    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
-    scrollbar-width: none; /* Hide scrollbar for Firefox */
-  }
-
-  .photo-scroll-container::-webkit-scrollbar {
-    display: none; /* Hide scrollbar for Chrome, Safari, Opera */
-  }
-
-  .photo-card {
-    flex: 0 0 100vw; /* Each card takes full viewport width */
-    height: 100vh; /* Each card takes full viewport height */
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    scroll-snap-align: center; /* Snap to center of card */
-    padding: 20px;
-    text-align: center;
-    background-color: var(--bg-color);
-    color: var(--text-color);
-  }
-
-  .image-wrapper {
-    width: 80vw; /* Adjust as needed */
-    height: 70vh; /* Adjust as needed */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 20px;
-    border-radius: 8px;
-    background-color: var(--card-bg);
-    border: 1px solid var(--border-color);
-    overflow: hidden;
-  }
-
-  .photo-card img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-  }
-
-  .not-generated-text {
-    font-size: 1.5em;
-    color: var(--text-color);
-  }
-
-  .photo-card h3 {
-    font-size: 2em;
-    margin-bottom: 20px;
-    color: var(--text-color);
-  }
-
-  .buttons {
-    display: flex;
-    gap: 15px;
-  }
-
-  .buttons button {
-    padding: 12px 25px;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 1.1em;
-    transition: background-color 0.2s ease, transform 0.1s ease;
-    font-family: 'Roboto Mono', monospace;
-  }
-
-  .buttons button:active {
-    transform: scale(0.98);
-  }
-
-  .buttons button.approve {
-    background-color: var(--button-approve-bg);
-    color: white;
-  }
-
-  .buttons button.approve:hover {
-    background-color: var(--button-approve-hover-bg);
-  }
-
-  .buttons button.regenerate {
-    background-color: var(--button-regenerate-bg);
-    color: white;
-  }
-
-  .buttons button.regenerate:hover {
-    background-color: var(--button-regenerate-hover-bg);
-  }
-
-  .sidebar {
-    width: 80px; /* Fixed width for sidebar */
-    background-color: var(--sidebar-bg);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 20px 0;
-    gap: 30px;
-    border-left: 1px solid var(--border-color);
-  }
-
-  .sidebar button {
-    background-color: var(--sidebar-button-bg);
-    color: var(--sidebar-text);
-    border: none;
-    border-radius: 50%;
-    width: 50px;
-    height: 50px;
-    font-size: 2em;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    cursor: pointer;
-    transition: background-color 0.2s ease, transform 0.1s ease;
-  }
-
-  .sidebar button:hover {
-    background-color: var(--sidebar-button-hover-bg);
-  }
-
-  .sidebar button:active {
-    transform: scale(0.95);
-  }
+	/* Modal Styles */
+	.loading-indicator {
+		padding: 0.5rem;
+		text-align: center;
+		color: var(--text-color);
+		font-style: italic;
+	}
+	
+	.error-message {
+		padding: 0.5rem;
+		color: #ff4444;
+		background: rgba(255, 68, 68, 0.1);
+		border-radius: 4px;
+	}
+	
+	.modal-backdrop {
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background-color: rgba(0, 0, 0, 0.7);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 100;
+	}
+	.modal-content {
+		background-color: var(--card-bg);
+		padding: 2rem;
+		border-radius: 8px;
+		width: 90%;
+		max-width: 500px;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+	.modal-content textarea {
+		width: 100%;
+		min-height: 100px;
+		background-color: var(--bg-color);
+		color: var(--text-color);
+		border: 1px solid var(--border-color);
+		border-radius: 4px;
+		padding: 0.5rem;
+		font-family: 'Space Mono', monospace;
+	}
+	.modal-content textarea:disabled {
+		background-color: #444;
+		cursor: not-allowed;
+	}
+	.modal-content label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+	}
+	.modal-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 1rem;
+		margin-top: 1rem;
+	}
+	.modal-actions button {
+		padding: 10px 20px;
+		border: none;
+		border-radius: 5px;
+		cursor: pointer;
+		font-family: 'Space Mono', monospace;
+	}
+	.cancel {
+		background-color: var(--sidebar-button-bg);
+		color: var(--sidebar-text);
+	}
+	.submit-regen {
+		background-color: var(--button-regenerate-bg);
+		color: white;
+	}
 </style>
-
-<div class="main-layout">
-  <div class="photo-scroll-container" bind:this={photoContainer}>
-    {#each daysOfWeek as day, i}
-      <div class="photo-card" id="day-{i}">
-        <h3>{day}</h3>
-        <div class="image-wrapper">
-          {#if imageErrors[day]}
-            <span class="not-generated-text">Not Generated</span>
-          {:else}
-            <img src="/api/photos/{day}" alt="Photo for {day}" on:error={() => handleImageError(day)} />
-          {/if}
-        </div>
-        <div class="buttons">
-          <button class="approve" on:click={() => handleClick(day, 'approve')}>Approve</button>
-          <button class="regenerate" on:click={() => handleClick(day, 'regenerate')}>Regenerate</button>
-        </div>
-      </div>
-    {/each}
-  </div>
-
-  <div class="sidebar">
-    <button on:click={goToPrevDay}>&larr;</button>
-    <button on:click={goToNextDay}>&rarr;</button>
-  </div>
-</div>

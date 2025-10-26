@@ -46,7 +46,7 @@ Follow these steps to get the application running on your local machine:
     The server is configured to listen on all network interfaces (`0.0.0.0`), so you can access it from other devices on your network using your machine's IP address (e.g., `http://your-ip-address:5173`).
 
 5.  **Access the application:**
-    Open your web browser and navigate to `http://localhost:5173` (or your machine's IP address).
+    Open your web browser and navigate to the dev server URL printed by Vite (for example, `http://<your-machine-ip>:5173`). Use the exact URL shown in the terminal after running `npm run dev`.
 
 ## Deployment to Production (Linux Server)
 
@@ -129,4 +129,18 @@ This application uses `@sveltejs/adapter-node` for production, which builds a st
 *   **`sh: 1: vite: not found`**: This usually means `npm install` did not complete successfully. Try running `npm install` again.
 *   **White background / Generic font**: Ensure `src/routes/+layout.svelte` exists and correctly imports `../app.css`.
 *   **Images not loading / "Not Generated"**: Verify that the image files (e.g., `Monday`, `Tuesday`) exist in `/home/shmolph/photos` on your Linux machine and that the server is running correctly.
+*   **Frontend can't reach external API / "Failed to fetch" on Approve**: If you run a separate backend (for example on port 3000), set the Vite environment variable `VITE_API_BASE` to the API URL before starting the dev server. Example:
+
+```powershell
+$env:VITE_API_BASE = 'http://localhost:3000'
+npm run dev
+```
+
+Or create a `.env` file in the project root with:
+
+```
+VITE_API_BASE=http://localhost:3000
+```
+
+If `VITE_API_BASE` is not set the frontend will call internal endpoints under `/api` (mock handlers are provided in `src/routes/api/actions`).
 
