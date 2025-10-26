@@ -3,8 +3,11 @@
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
 
-	// Use relative API paths so requests go to the same dev server (avoid external localhost:3000 dependency)
-	const API_BASE = '';
+	// Use Vite env var VITE_API_BASE to point to an external API (e.g. http://localhost:3000).
+	// If not set, the app will use relative in-app endpoints under /api.
+	const API_BASE = import.meta.env.VITE_API_BASE || '';
+
+	console.log('API base:', API_BASE || '(using built-in /api endpoints)');
 	// Configurable settings
 	const MAX_RETRIES = 3;
 	const RETRY_DELAY = 1000; // ms
