@@ -1,6 +1,7 @@
 <script>
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import { fade } from 'svelte/transition';
 
 	// Use Vite env var VITE_API_BASE to point to an external API (e.g. http://localhost:3000).
@@ -39,8 +40,8 @@
 	 	}
 	}
 
-	// Load all images when in gallery view
-	$: if (showGallery) {
+	// Load all images when in gallery view (only run client-side to avoid SSR fetch of relative URLs)
+	$: if (browser && showGallery) {
 		days.forEach(day => {
 			fetchImage(day, true);
 		});
@@ -62,6 +63,20 @@ let showGallery = true;
 		const startTime = Date.now();
 		loadingStates[day] = true;
 		let attempt = 0;
+
+		// If running on the server and we're using the in-app relative API (API_BASE === ''),
+		// do not attempt to fetch — server-side rendering cannot fetch relative URLs.
+		if (!browser && !API_BASE) {
+			// Leave status as 'loading' for the client to pick up and fetch on mount.
+			if (isGallery) {
+				galleryImages[day].status = 'loading';
+			} else {
+				imageStatus = 'loading';
+			}
+			loadingStates[day] = false;
+			console.log(`[${day}] Skipping fetch during SSR for relative URL`);
+			return;
+		}
 
 		if (isGallery) {
 			galleryImages[day].status = 'loading';
