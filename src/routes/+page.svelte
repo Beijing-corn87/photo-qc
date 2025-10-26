@@ -362,6 +362,7 @@ let showGallery = true;
 					{#each days as d}
 						<div 
 							class="day-tile"
+							role="group"
 							on:mouseenter={() => galleryImages[d].isHovered = true}
 							on:mouseleave={() => galleryImages[d].isHovered = false}
 						>
@@ -413,11 +414,23 @@ let showGallery = true;
 </main>
 
 {#if showRegenModal || showBatchRegenModal}
-	<div class="modal-backdrop" on:click={() => {
-		showRegenModal = false;
-		showBatchRegenModal = false;
-	}}>
-		<div class="modal-content" on:click|stopPropagation>
+	<div 
+		class="modal-backdrop" 
+		role="button" 
+		tabindex="0"
+		aria-label="Close modal"
+		on:click={() => {
+			showRegenModal = false;
+			showBatchRegenModal = false;
+		}}
+		on:keydown={(e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				showRegenModal = false;
+				showBatchRegenModal = false;
+			}
+		}}
+	>
+	<div class="modal-content" role="dialog" aria-modal="true" on:click|stopPropagation>
 			<h2>{showBatchRegenModal ? 'Regenerate All Photos' : 'Regenerate Photo'}</h2>
 			{#if actionInProgress}
 				<div class="loading-indicator">Processing request...</div>
