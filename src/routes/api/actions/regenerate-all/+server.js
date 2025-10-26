@@ -11,10 +11,15 @@ export async function POST({ request }) {
 		try {
 			const target = `${EXTERNAL_BASE.replace(/\/$/, '')}/api/actions/regenerate-all`;
 			console.log(`[api/actions/regenerate-all] Forwarding to ${target}`);
+			// Ensure external API receives 'the fix' field (or 'nil' when empty)
+			const forwardBody = {
+				action: body.action || 'regenerate-all',
+				['the fix']: (body.description && String(body.description).trim()) ? body.description : 'nil'
+			};
 			const resp = await fetch(target, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
+				body: JSON.stringify(forwardBody)
 			});
 			const contentType = resp.headers.get('content-type') || 'application/json';
 			const text = await resp.text();
